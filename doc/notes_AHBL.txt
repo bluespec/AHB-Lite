@@ -1,0 +1,73 @@
+Ref:
+  "AMBA 3 AHB-Lite Protocol v1.0; Specification",
+   Document IHI 0033A, ARM Ltd., 2006
+
+These notes are based on studying the document.
+
+AHB-Lite (and AHB) is quite complex (compared to AXI4-Lite) because it
+is not truly pipelined. It has a strange coupling between address and
+data transfer: a second address transfer cannot be completed until the
+first data transfer is completed.  The document is also quite poorly
+written
+
+- HADDR: is not flow controlled AT ALL.
+    The Master can issue an addr on any cycle.
+
+    p1-5: "A slave cannot request that the address phase is extended
+    and therefore all slaves must be capable of sampling the address
+    during this time."
+
+    Master can _always_ provide next addr during a data xfer (assuming HREADY)
+
+    p3-2: Address phase lasts for a single HCLK (unless extended by previous xfer)
+
+    During a data-phase xfer, only HTRANS=IDLE indicates that the address is bogus.
+
+    When ! HREADY, master must not change HADDR etc.
+    i.e., master must hold HADDR etc. until next HREADY
+
+- HTRANS:
+    In general, HTRANS=BUSY can mean that the WDATA is not yet available for
+    the master to send.  But this can never happen in a transactor
+    from AXI4 master to AHBL master, since WR_DATA is needed even for
+    the address phase, since AHBL.HSIZE has to be computed from
+    AXI4L.WR_DATA.WSTRB.  Thus, WDATA is always available.
+
+    However, HTRANS _can_ be BUSY for other reasons: if the
+    AXI4L.WR_RESP or AXI4L.RD_DATA channels are blocked, the master is
+    unable to accept the AHBL slave response.
+
+- HREADYOUT: is _only_ used (by slave) to wait-state the data transfer,
+    never an address phase. In fact 'wait-state' _only_ refers to data
+    xfer.
+
+    HREADY from multiplexor high => completion of data transfer.
+        but also sent from multiplexor to all slaves via their HREADYIN ports.
+
+    p4-2: "when HREADY is HIGH, indicating that the current transfer is completing"
+        But, if master has asserted HTRANS=BUSY, the transfer is not yet completing.
+	Timing diagram p3-6 shows example of HREADY HIGH but HTRANS=BUSY.
+
+- HRESP can only depend on HADDR (misalignment, bad size, out of
+    range, ...), since it is provided on the same cycle as HWDATA/HRDATA.
+
+    Table 3-1: "Slaves must always provide a zero wait state OKAY for BUSY xfers,
+        and the xfer must be ignored by the slave"
+
+- After all this analysis, it appears that:
+    - In Master, generating HTRANS cannot depend on input HREADY
+    - In Slave,  generating HREADY cannot depend on input HTRANS
+
+- HSELx: p2-6: 'HSELx is a combinatorial decode of the address bus' (in the decoder)
+        'HSELx signals to the multiplexor should be retimed to the data phase'
+    i.e., the HSELx provided to the multiplexor needs 1 cycle behind
+    the HSELx provided to slaves.
+
+- HMASTLOCK is irrelevant for single-master structures. It would only
+    be used in a 'Multi-layer AHB' structure. When one master asserts
+    HMASTLOCK during one HADDR phase , the multi-layer arbiter will
+    have to hold that arbitration until the next HADDR phase.
+
+    - Presumably HMASTLOCK is only used on SINGLE transactions (would be
+        quite hairy if it applied to any kind of burst!).
+

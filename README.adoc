@@ -1,0 +1,13 @@
+= AHB Lite Master for TCM-based Near-Mems
+
+This repository has been repurposed from AHB-Lite sources in `Bluespec_RISCV` for use with a TCM based near-mem (only supports single requests).
+
+While the repository does support standalone testing of the master with a memory model attached to a AHB-Lite slave, it is meant to be eventually used as an adapter with a `Near_Mem_TCM` implementation.
+
+== Directory Structure
+
+* `build`            : standalone simulation-based testing
+* `doc`              : documentation and notes
+* `src`              : design sources
+* `src_tb`           : testbench sources
+* `src_bsc_lib_RTL`  : RTL library sources for building verilator simulator
