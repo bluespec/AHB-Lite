@@ -240,13 +240,16 @@ module mkTCM_AHBL_Adapter #(
    rule rl_complete_nseq_req (wi_hready && (rg_state == ADDR));
       rg_htrans <= AHBL_IDLE;
       rg_state  <= read_request ? RDATA : WDATA;
+
+      AHB_Fabric_Data hwdata = truncate (fv_get_ahb_wdata (
+         f_single_reqs.first, f_single_write_data.first));
+
       if (write_request)
-         rg_hwdata <= truncate (fv_get_ahb_wdata (f_single_reqs.first, f_single_write_data.first));
+         rg_hwdata <= hwdata;
       if (verbosity > 0) begin
          if (write_request)
             $display ("%0d: %m.rl_complete_nseq_req: (addr 0x%08h) (wdata 0x%08h)"
-               , cur_cycle, req_addr
-               , truncate (fv_get_ahb_wdata (f_single_reqs.first, f_single_write_data.first)));
+               , cur_cycle, req_addr, hwdata );
          else
             $display ("%0d: %m.rl_complete_nseq_req: (addr 0x%08h) ", cur_cycle, req_addr);
       end
