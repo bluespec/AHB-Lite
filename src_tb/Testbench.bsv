@@ -17,6 +17,7 @@ import GetPut :: *;
 // Project imports
 
 import AHBL_Types       :: *;
+import AHBL_Defs        :: *;
 
 import TCM_AHBL_Adapter :: *;
 import AHBL_Mem_Model   :: *;

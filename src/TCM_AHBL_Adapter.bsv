@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Bluespec, Inc.  All Rights Reserved
+// Copyright (c) 2020 Bluespec, Inc.  All Rights Reserved
 
 package TCM_AHBL_Adapter;
 
@@ -45,6 +45,7 @@ import GetPut              :: *;
 // Project imports
 
 import AHBL_Types          :: *;
+import AHBL_Defs           :: *;
 
 `ifdef STANDALONE
 import Testbench_Commons   :: *;
@@ -55,28 +56,8 @@ import Cur_Cycle           :: *;
 `endif
 
 // ================================================================
-// AXI4-Lite and AHB-Lite bus widths and fabric definition. These could move into a
-// AHB_Fabric_Defs package
-// NOTE: Only FABRIC32 is usable in this release.
+// Local state enumeration
 
-typedef 32 AHB_Wd_Addr;    // AHB-L only supports 32b addresses
-`ifdef FABRIC32
-typedef 32 AHB_Wd_Data;
-`endif
-`ifdef FABRIC64
-typedef 64 AHB_Wd_Data;
-`endif
-
-typedef Bit #(AHB_Wd_Addr) AHB_Fabric_Addr;
-typedef Bit #(AHB_Wd_Data) AHB_Fabric_Data;
-
-// Byte-width of the fabric
-Integer bytes_per_fabric_data = ((valueOf (AHB_Wd_Data) == 32) ? 4 : 8);
-
-// ================================================================
-// AXI4-Lite to AHB-Lite master transactor module
-
-typedef enum { IDLE, RDATA_PENDING } Data_Pending deriving (Bits, Eq, FShow);
 typedef enum { IDLE, ADDR, WDATA, RDATA } AHB_Master_State deriving (Bits, Eq, FShow);
 
 // ================================================================
