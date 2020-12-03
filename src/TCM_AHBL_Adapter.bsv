@@ -51,7 +51,7 @@ import AHBL_Defs           :: *;
 import Testbench_Commons   :: *;
 `else
 import ISA_Decls           :: *;
-import MMU_Cache_Commons   :: *; // definitions for req/rsp types
+import MMU_Cache_Common    :: *; // definitions for req/rsp types
 import Cur_Cycle           :: *;
 `endif
 
