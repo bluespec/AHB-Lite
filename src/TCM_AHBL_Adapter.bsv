@@ -27,8 +27,13 @@ package TCM_AHBL_Adapter;
 // 1. Support 64-bit accesses on FABRIC32
 // 2. Use UGDEQ FIFOs for the request and wdata to avoid local FFs
 //    for addr and data.
-
 // ================================================================
+// Macros:
+// 
+// STANDALONE: Allows separate compilation with CPU-side interfaces
+//
+// ================================================================
+//
 // BSV lib imports
 
 import DefaultValue        :: *;
@@ -75,12 +80,14 @@ interface TCM_AHBL_Adapter_IFC;
    // Reset
    method Action  reset;
 
+`ifdef STANDALONE
    // ----------------
    // interface for word/sub-word read/write client
 
    interface Put #(Single_Req) p_mem_single_req;
    interface Put #(Bit #(64))  p_mem_single_write_data;
    interface Get #(Read_Data)  g_mem_single_read_data;
+`endif
 
    // ----------------
    // Fabric master interface
@@ -120,7 +127,7 @@ endfunction
 `endif   // `else ISA_PRIV_S
 
 // ----------------------------------------------------------------
-// Convert size code into AXI4_Size code (number of bytes in a beat).
+// Convert size code into AHBL_Size code (number of bytes in a beat).
 
 function AHBL_Size  fv_size_code_to_AHBL_Size (Bit #(2) size_code);
    if ((valueOf (AHB_Wd_Data) == 32) && (size_code == 2'b11)) return AHBL_BITS32;
@@ -294,12 +301,14 @@ module mkTCM_AHBL_Adapter #(
    endmethod
 
 
+`ifdef STANDALONE
    // ----------------
    // interface for word/sub-word read/write client
 
    interface Put p_mem_single_req        = toPut (f_single_reqs);
    interface Put p_mem_single_write_data = toPut (f_single_write_data);
    interface Get g_mem_single_read_data  = toGet (f_single_read_data);
+`endif
 
 
    // ----------------
