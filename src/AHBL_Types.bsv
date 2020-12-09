@@ -122,8 +122,6 @@ interface AHBL_Slave_IFC #(numeric type wd_data);
    method Action hwdata    ((* port = "HWDATA" *)    Bit #(wd_data)  data);
    (* prefix = "", result = "unused8" *)
    method Action hwrite    ((* port = "HWRITE" *)    Bool            write);
-   (* prefix = "", result = "unused8" *)
-   method Action hreadyin  ((* port = "HREADYIN" *)  Bool            readyin);
 
    // Outputs
    (* result = "HRDATA" *)    method Bit #(wd_data)  hrdata;
@@ -235,6 +233,7 @@ instance Connectable #(AHBL_Master_IFC #(wd_data),
       // Note:
       //     hsel and hready need to be driven separately
       //     e.g., by arbitration module?
+      // Do we need hreadyin to the slave?
    endmodule
 endinstance
 
@@ -280,7 +279,6 @@ module mkDummy_AHBL_Slave (AHBL_Slave_IFC #(wd_data));
       method Action htrans    (AHBL_Trans      trans)    = noAction;
       method Action hwdata    (Bit #(wd_data)  data)     = noAction;
       method Action hwrite    (Bool            write)    = noAction;
-      method Action hreadyin  (Bool            readyin)  = noAction;
 
       // Outputs
       method Bool            hreadyout = True;

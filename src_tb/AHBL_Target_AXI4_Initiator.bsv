@@ -9,9 +9,6 @@ package AHBL_Target_AXI4_Initiator;
 // Works with FABRIC32 on the AHB-L and both FABRIC32 and FABRIC64
 // on AXI4. Does not support bursts on the AHB-L.
 //
-// This implementation depends on the AXI4 adapters for AXI4
-// signalling and compliance.
-//
 // ================================================================
 // TODO:
 // - make hex-file init optional
@@ -20,55 +17,35 @@ package AHBL_Target_AXI4_Initiator;
 // BSV lib imports
 
 import DefaultValue  :: *;
-import RegFile       :: *;
+import FIFOF         :: *;
 import FShow         :: *;
 
 // ================================================================
 // Project imports
 
+import AXI4_Types :: *;
 import AHBL_Types :: *;
 import AHBL_Defs  :: *;
 `ifdef STANDALONE
 import Testbench_Commons   :: *;
 `else
 import MMU_Cache_Common    :: *;
+import Fabric_Defs         :: *;
 import Cur_Cycle           :: *;
 `endif
+import Semi_FIFOF       :: *;
 
 // ================================================================
 // Local type definitions
 
 typedef enum { RDY, WDATA, RDATA } AHB_Target_State deriving (Bits, Eq, FShow);
 
-typedef struct {
-   Bool        upper32;
-   Bool        is_read;
-   AHBL_Trans  htrans; 
-} Req_Control deriving (Bits, Eq, FShow);
-
 // ----------------------------------------------------------------
 // Utility functions
 //
 // Convert AHBL_Size code into code for request (number of bytes in a beat).
-function Bit #(2)  fv_AHBL_Size_to_Req_Size (AHBL_Size ahbl_size);
-   return (truncate (pack (ahbl_size)));
-endfunction
-
-// Adjust outgoing write data based on FABRIC-32/64
-function Bit #(64) fv_get_axi4_wdata (Req_Control ctrl, AHB_Fabric_Data wd);
-   Bit #(64) wdata = extend (wd);
-   // FABRIC32 adjustments
-   if (valueOf (AHB_Wd_Data) == 32) begin
-      Bool in_upper32 = (req.addr [2] == 1'b1);
-      if (in_upper32) wdata = {wd, 32'b0};
-   end
-
-   return (wdata);
-endfunction
-
-// Convert AXI4 64-bit response data to byte lane adjusted AHB data
-function AHB_Fabric_Data fv_get_ahbl_rdata (Req_Control ctrl, Bit #(64) rdata);
-   return (ctrl.upper32 ? rdata [63:32] : rdata [31:0]);
+function AXI4_Size fv_AHBL_Size_to_AXI4_Size (AHBL_Size ahbl_size);
+   return (pack (ahbl_size));
 endfunction
 
 // ================================================================
@@ -87,12 +64,6 @@ module mkAHBL_Target_AXI4_Initiator (AHBL_Target_AXI4_Initiator);
 
    // ----------------
 
-   Bit #(30) word_addr_lo = 0;
-   // bsc bug? If we use the following, we get a strange err in mkRegFileLoad()
-   // Bit #(30) word_addr_lo = byte_addr_lo [31:2];
-   Bit #(30) word_addr_hi = byte_addr_hi [31:2];
-
-   // ----------------
    // AHB-Lite signals and registers
 
    // Inputs
@@ -105,10 +76,8 @@ module mkAHBL_Target_AXI4_Initiator (AHBL_Target_AXI4_Initiator);
    Wire #(AHBL_Trans)  w_htrans    <- mkBypassWire;
    Wire #(Bit #(32))   w_hwdata    <- mkBypassWire;
    Wire #(Bool)        w_hwrite    <- mkBypassWire;
-   Wire #(Bool)        w_hreadyin  <- mkBypassWire;
 
    // Outputs
-   Wire #(Bool)        w_hreadyout <- mkBypassWire;
    Reg  #(AHB_Fabric_Data) rg_rdata<- mkRegU;
 
    // ----------------
@@ -118,67 +87,153 @@ module mkAHBL_Target_AXI4_Initiator (AHBL_Target_AXI4_Initiator);
    // ----------------
    // The AXI4 Initiator
    // Request and response FIFOs shared with the AXI4 side
-   FIFOF #(Single_Req) f_single_reqs <- mkFIFOF1;
-   FIFOF #(Req_Control) f_req_control <- mkFIFOF1;
-   FIFOF #(Bit #(64))  f_single_write_data <- mkFIFOF1;
-   FIFOF #(Read_Data)  f_single_read_data <- mkFIFOF1;
+   FIFOF #(Tuple3 #(AXI4_Size,    // size_code
+		    Bit #(1),     // addr bit [2]
+		    Bit #(8)))    // Num beats read-data
+         f_rd_rsp_control <- mkFIFOF1;
+   FIFOF #(Tuple3 #(AXI4_Size,    // size_code
+		    Bit #(3),     // addr lsbs
+		    Bit #(8)))    // Num beats in write-data
+         f_wr_data_control <- mkFIFOF1;
 
-   Bit#(2) verbosity_fabric = 0;
-   TCM_AXI4_Adapter_IFC axi4_adapter<- mkTCM_AXI4_Adapter (
-      verbosity_fabric, f_single_reqs, f_single_write_data, f_single_read_data);
+   // AXI4 fabric request/response
+   AXI4_Master_Xactor_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) master_xactor <- mkAXI4_Master_Xactor;
 
    // ================================================================
    // BEHAVIOR
 
-   rule rl_ready_for_new_req (rg_state == RDY);
+   Reg #(Bit #(2)) rg_wr_rsps_pending <- mkReg (0);
+   rule rl_ahbl_new_req (rg_state == RDY);
       let nstate = rg_state;
-      Bool sel = (w_hsel && hreadyin && (w_htrans != AHBL_IDLE));
+      Bool sel = (w_hsel && (w_htrans != AHBL_IDLE));
       if (sel) begin
-	 // Register fresh address-and-control inputs as request to AXI4
-         let req = Single_Req {
-              is_read   : !w_hwrite
-            , addr      : w_haddr
-            , size_code : fv_AHBL_Size_to_Req_Size (w_hsize)
-         };
+         AXI4_Size   fabric_size = fv_AHBL_Size_to_AXI4_Size (w_hsize);
+         Fabric_Addr fabric_addr = pack (w_haddr);
 
-         // Control information used in the data phase
-         f_req_control.enq (Req_Control {
-              upper32 : (req.addr [2] == 1'b1)
-            , is_read : !w_hwrite
-            , htrans  : w_htrans
-         });
+         if (verbosity >= 1)
+            $display ("%0d: %m.rl_ahbl_new_req:\n    AXI4_Rd_Addr{araddr %0h arlen 0 (burst length 1) ",
+                      cur_cycle, fabric_addr,  fshow_AXI4_Size (fabric_size), "}");
 
-         f_single_reqs.enq (req);
-         nstate = w_hwrite ? WDATA : RDATA;
+         Bit #(8)    num_beats   = 1;
+
+         // Note: AXI4 codes a burst length of 'n' as 'n-1'
+         AXI4_Len fabric_len = num_beats - 1;
+
+         // read request
+         if (!w_hwrite) begin
+            nstate = RDATA;
+            let mem_req_rd_addr = AXI4_Rd_Addr {arid:     fabric_default_id,
+                                                araddr:   fabric_addr,
+                                                arlen:    0,           // burst len = arlen+1
+                                                arsize:   fabric_size,
+                                                arburst:  fabric_default_burst,
+                                                arlock:   fabric_default_lock,
+                                                arcache:  fabric_default_arcache,
+                                                arprot:   fabric_default_prot,
+                                                arqos:    fabric_default_qos,
+                                                arregion: fabric_default_region,
+                                                aruser:   fabric_default_user};
+            master_xactor.i_rd_addr.enq (mem_req_rd_addr);
+
+            f_rd_rsp_control.enq (tuple3 (fabric_size, fabric_addr [2], num_beats));
+         end
+
+         // write request
+         else begin
+            nstate = WDATA;
+            let mem_req_wr_addr = AXI4_Wr_Addr {awid:     fabric_default_id,
+                                                awaddr:   fabric_addr,
+                                                awlen:    0,           // burst len = arlen+1
+                                                awsize:   fabric_size,
+                                                awburst:  fabric_default_burst,
+                                                awlock:   fabric_default_lock,
+                                                awcache:  fabric_default_arcache,
+                                                awprot:   fabric_default_prot,
+                                                awqos:    fabric_default_qos,
+                                                awregion: fabric_default_region,
+                                                awuser:   fabric_default_user};
+            master_xactor.i_wr_addr.enq (mem_req_wr_addr);
+
+            f_wr_data_control.enq (tuple3 (fabric_size, fabric_addr [2:0], num_beats));
+            rg_wr_rsps_pending <= rg_wr_rsps_pending + 1;
+         end
       end
       rg_state <= nstate;
    endrule
 
-   // Forward the write data to the AXI
+   // Forward the write data to the AXI - only works for FABRIC32
    rule rl_write_data (rg_state == WDATA);
-      f_single_write_data.enq (fv_get_axi4_wdata (f_req_control.first, w_hwdata));
-      f_req_control.deq;
+      Bool last = True;
+      f_wr_data_control.deq;
+
+      match {.wr_req_size_code,
+             .wr_req_addr_lsbs,
+             .wr_req_beats } = f_wr_data_control.first;
+
+      Bit #(4)  strb = case (wr_req_size_code)
+			  axsize_1: 4'h_1;
+			  axsize_2: 4'h_3;
+			  axsize_4: 4'h_F;
+                          default: 4'h0;  // should never get here
+                       endcase;
+      let mem_req_wr_data = AXI4_Wr_Data {wdata:  w_hwdata,
+					  wstrb:  strb,
+					  wlast:  last,
+					  wuser:  fabric_default_user};
+      master_xactor.i_wr_data.enq (mem_req_wr_data);
       rg_state <= RDY;
 
-     if (verbosity != 0)
-        $display ("%0d: %m.rl_wdata: 0x%08h", cur_cycle, w_hwdata);
+      if (verbosity >= 1) begin
+	 $display ("%0d: %m.rl_write_data: beat %0d/%0d", cur_cycle);
+	 $display ("    AXI4_Wr_Data{%0h strb %0h last %0d}", w_hwdata, strb, pack (last));
+      end
    endrule
 
-   // Forward the read response from the AXI when it is available
+   // Forward the read response from the AXI when it is available. Does not process read errors.
    rule rl_rdata (rg_state == RDATA);
       rg_state <= RDY;
-      let rrsp = f_single_read_data.first; f_single_read_data.deq;
-      rg_rdata <= fv_get_ahbl_data (f_req_control.first, rrsp.data);
-      f_req_control.deq;
+      let rd_data <- pop_o (master_xactor.o_rd_data);
+      Bool      ok   = (rd_data.rresp == axi4_resp_okay);
+      rg_rdata <= rd_data.rdata;
+      f_rd_rsp_control.deq;
+   endrule
+
+   // ****************************************************************
+   // BEHAVIOR: WRITE RESPONSES - responses discarded
+   // The following register identifies the client
+
+   // Record errors on write-responses from mem
+   Reg #(Bool) rg_write_error <- mkReg (False);
+   rule rl_write_rsp;
+      let wr_resp <- pop_o (master_xactor.o_wr_resp);
+
+      Bool err = False;
+      if (rg_wr_rsps_pending == 0) begin
+	 rg_write_error <= True;
+
+	 $display ("%0d: %m.rl_write_rsp: ERROR not expecting any write-response:", cur_cycle);
+	 $display ("    ", fshow (wr_resp));
+      end
+      else begin
+	 rg_wr_rsps_pending <= rg_wr_rsps_pending - 1;
+	 if (wr_resp.bresp != axi4_resp_okay) begin
+	    rg_write_error <= True;
+	    if (verbosity >= 1) begin
+	       $display ("%0d: %m.rl_write_rsp: FABRIC RESPONSE ERROR", cur_cycle);
+	       $display ("    ", fshow (wr_resp));
+	    end
+	 end
+	 else if (verbosity >= 1) begin
+	    $display ("%0d: %m.rl_write_rsp: pending=%0d, ",
+		      cur_cycle, rg_wr_rsps_pending, fshow (wr_resp));
+	 end
+      end
    endrule
 
    // ================================================================
    // INTERFACE
    method Action reset;
-      f_single_reqs.clear;
-      f_single_write_data.clear;
-      f_single_read_data.clear;
-      f_req_control.clear;
+      master_xactor.reset;
       rg_state <= RDY;
       if (verbosity > 1)
          $display ("%0d: %m.reset", cur_cycle);
@@ -224,10 +279,6 @@ module mkAHBL_Target_AXI4_Initiator (AHBL_Target_AXI4_Initiator);
          w_hwrite <= write;
       endmethod
 
-      method Action hreadyin (Bool readyin);
-         w_hreadyin <= readyin;
-      endmethod
-
       // ----------------
       // Outputs
 
@@ -236,7 +287,7 @@ module mkAHBL_Target_AXI4_Initiator (AHBL_Target_AXI4_Initiator);
       method Bit #(32)  hrdata    = rg_rdata;
    endinterface
 
-   interface AXI4_Master_IFc axi4_initiator = axi4_adapter.mem_master;
+   interface AXI4_Master_IFC axi4_initiator = master_xactor.axi_side;
 
 endmodule
 

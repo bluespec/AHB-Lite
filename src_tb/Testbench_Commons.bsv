@@ -5,6 +5,7 @@
 
 package Testbench_Commons;
 import FShow :: *;
+import AXI4_Types :: *;
 
 // Requests and responses between:
 //     MMIO     <-> TCM_AHBL_Adapter
@@ -62,5 +63,34 @@ function Bool fn_is_uart0_addr (Bit #(32) addr);
    return ((uart0_addr_base <= addr) && (addr < uart0_addr_lim));
 endfunction
 
+
+// ----------------------------------------------------------------
+// AXI4 Fabric Definitions
+typedef 4 Wd_Id;
+typedef  Bit #(Wd_Id)  Fabric_Id;
+
+typedef 32   Wd_Addr;
+typedef  Bit #(Wd_Addr)      Fabric_Addr;
+typedef  TDiv #(Wd_Addr, 8)  Bytes_per_Fabric_Addr;
+Integer  bytes_per_fabric_addr = valueOf (Bytes_per_Fabric_Addr);
+
+typedef 32   Wd_Data;
+typedef  Bit #(Wd_Data)             Fabric_Data;
+typedef  Bit #(TDiv #(Wd_Data, 8))  Fabric_Strb;
+typedef  TDiv #(Wd_Data, 8)         Bytes_per_Fabric_Data;
+Integer  bytes_per_fabric_data = valueOf (Bytes_per_Fabric_Data);
+
+typedef  0               Wd_User;
+typedef  Bit #(Wd_User)  Fabric_User;
+
+Fabric_Id    fabric_default_id       = 0;
+AXI4_Burst   fabric_default_burst    = axburst_incr;
+AXI4_Lock    fabric_default_lock     = axlock_normal;
+AXI4_Cache   fabric_default_arcache  = arcache_dev_nonbuf;
+AXI4_Cache   fabric_default_awcache  = awcache_dev_nonbuf;
+AXI4_Prot    fabric_default_prot     = { axprot_2_data, axprot_1_secure, axprot_0_unpriv };
+AXI4_QoS     fabric_default_qos      = 0;
+AXI4_Region  fabric_default_region   = 0;
+Fabric_User  fabric_default_user     = ?;
 endpackage
 
