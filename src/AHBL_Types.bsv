@@ -73,7 +73,7 @@ typedef enum {AHBL_IDLE,      // 0
 deriving (Bits, Eq, FShow);
 
 // ================================================================
-// AHB Master signal interface 
+// AHB Master signal interface
 
 (* always_ready, always_enabled *)
 interface AHBL_Master_IFC #(numeric type wd_data);
@@ -99,7 +99,7 @@ interface AHBL_Master_IFC #(numeric type wd_data);
 endinterface
 
 // ================================================================
-// AHB Slave signal interface 
+// AHB Slave signal interface
 
 (* always_ready, always_enabled *)
 interface AHBL_Slave_IFC #(numeric type wd_data);
@@ -210,6 +210,11 @@ instance Connectable #(AHBL_Master_IFC #(wd_data),
       (* fire_when_enabled, no_implicit_conditions *)
       rule rl_connect_hwrite;
 	 slave.hwrite (master.hwrite);
+      endrule
+
+      (* fire_when_enabled, no_implicit_conditions *)
+      rule rl_connect_hsel;
+	 slave.hsel (True);
       endrule
 
       // ----------------------------------------------------------------
