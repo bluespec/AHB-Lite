@@ -24,6 +24,9 @@ package TCM_AHBL_Adapter;
 // The AHB-Lite bus master can be used with 32b buses (FABRIC32),
 // and manages byte-lane alignment, etc. accordingly.
 //
+// The STANDALONE macro should be enabled when the Adapter is to be
+// instantiated in its own hierarchy or for standalone verification
+//
 // ================================================================
 // Ref for AHB-Lite:
 //     ARM AMBA 5 AHB Protocol Specification
@@ -126,6 +129,17 @@ endfunction
 
 `endif   // `else ISA_PRIV_S
 
+// Convert an AHB-L Fabric Address to an XLen Address
+function Addr fv_Fabric_Addr_to_Addr (AHB_Fabric_Addr a);
+`ifdef RV32
+   return (pack (a));
+`endif
+`ifdef RV64
+   return extend (a);
+`endif
+endfunction
+
+
 // ----------------------------------------------------------------
 // Convert size code into AHBL_Size code (number of bytes in a beat).
 // Any sizes other than bytes, half-word and words are illegal
@@ -216,7 +230,7 @@ module mkTCM_AHBL_Adapter #(
       rg_htrans <= AHBL_IDLE;
       rg_state  <= read_request ? RDATA : WDATA;
 
-      let hwdata = fv_get_ahb_wdata (f_single_write_data.first));
+      let hwdata = fv_get_ahb_wdata (f_single_write_data.first);
 
       if (write_request) rg_hwdata <= hwdata;
 
