@@ -105,7 +105,7 @@ endinterface
 // Address converters
 
 `ifdef ISA_PRIV_S
-// Convert a 64-bit PA to an AXI4 Fabric Address
+// Convert a 64-bit PA to an AHBL Fabric Address
 // Discard the upper 32 bits
 
 function AHB_Fabric_Addr fv_Addr_to_Fabric_Addr (Bit #(64) addr);
@@ -114,7 +114,7 @@ endfunction
 
 `else
 
-// Convert a XLEN Address to an AXI4 Fabric Address 
+// Convert a XLEN Address to an AHBL Fabric Address 
 function Bit #(32) fv_Addr_to_Fabric_Addr (Addr addr);
 `ifdef RV32
 return (addr);
@@ -134,6 +134,13 @@ function AHBL_Size  fv_size_code_to_AHBL_Size (Bit #(2) size_code);
    else return unpack ({ 1'b0, size_code });
 endfunction
 
+`ifdef NM32
+// Adjust incoming write data based on FABRIC-32/64
+function Bit #(32) fv_get_ahb_wdata (Single_Req req, Bit #(32) wr_data);
+   let wdata = wr_data;
+   return (wdata);
+endfunction
+`else
 // Adjust incoming write data based on FABRIC-32/64
 function Bit #(64) fv_get_ahb_wdata (Single_Req req, Bit #(64) wr_data);
    let wdata = wr_data;
@@ -152,6 +159,7 @@ function Bit #(64) fv_get_ahb_wdata (Single_Req req, Bit #(64) wr_data);
 
    return (wdata);
 endfunction
+`endif
 
 // ================================================================
 // MODULE IMPLEMENTATION
@@ -164,13 +172,21 @@ module mkTCM_AHBL_Adapter #(
 ) (TCM_AHBL_Adapter_IFC);
 `else
    , FIFOF #(Single_Req) f_single_reqs
+`ifdef NM32
+   , FIFOF #(Bit #(32))  f_single_write_data
+`else
    , FIFOF #(Bit #(64))  f_single_write_data
+`endif
    , FIFOF #(Read_Data)  f_single_read_data) (TCM_AHBL_Adapter_IFC);
 `endif
 
 `ifdef STANDALONE
    FIFOF #(Single_Req) f_single_reqs <- mkFIFOF1;
+`ifdef NM32
+   FIFOF #(Bit #(32))  f_single_write_data <- mkFIFOF1;
+`else
    FIFOF #(Bit #(64))  f_single_write_data <- mkFIFOF1;
+`endif
    FIFOF #(Read_Data)  f_single_read_data <- mkFIFOF1;
 `endif
 
@@ -250,9 +266,18 @@ module mkTCM_AHBL_Adapter #(
       rg_state  <= IDLE;
 
       // Response handling and packing
+`ifdef NM32
+`ifdef FABRIC32
+      Bit #(32) data = wi_hrdata;
+`endif
+`else
+`ifdef FABRIC32
       Bit #(64) data = zeroExtend (wi_hrdata);
+`endif
+`endif
       Bool ok = (wi_hresp == AHBL_OKAY);
 
+`ifndef NM32
       // FABRIC32 adjustments
       if (valueOf (AHB_Wd_Data) == 32) begin
          // Not a burst
@@ -262,6 +287,7 @@ module mkTCM_AHBL_Adapter #(
             if (in_upper32) data = { data [31:0], 32'b0 };
          end
       end
+`endif
 
       let rsp = Read_Data { ok: ok, data: data };
       f_single_read_data.enq (rsp);
