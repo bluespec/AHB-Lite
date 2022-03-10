@@ -293,5 +293,50 @@ module mkDummy_AHBL_Slave (AHBL_Slave_IFC #(wd_data));
 endmodule
 
 // ================================================================
+// AHBL data is aligned to byte lanes based on addr lsbs.
+// This function replaces the appropriate bytes of 'old_word'
+// with the appropriate bytes of HWDATA depending on the address LSBs and transfer size.
+// Also returns err=True for unsupported 'size' and misaligned addrs.
+
+function Bool fn_is_aligned (Bit #(2) addr_lsbs, AHBL_Size size);
+   let is_aligned = True;
+   case (size)
+      AHBL_BITS8  : return (True);
+      AHBL_BITS16 : case (addr_lsbs)
+                       2'b00: return (True);
+                       2'b10: return (True);
+                       default: return (False);
+                    endcase
+      AHBL_BITS32 : case (addr_lsbs)
+                       2'b00: return (True);
+                       default: return (False);
+                    endcase
+      default: return (False);
+   endcase
+endfunction
+
+function Bit #(32) fn_replace_bytes (  Bit #(2) addr_lsbs
+                                     , AHBL_Size  size
+                                     , Bit #(32)  old_word
+                                     , Bit #(32)  hwdata);
+
+   let new_word = old_word;
+   case (size)
+      AHBL_BITS8:  case (addr_lsbs)
+                      2'b00: new_word = { old_word [31:24], old_word [23:16], old_word [15:8], hwdata   [7:0] };
+                      2'b01: new_word = { old_word [31:24], old_word [23:16], hwdata   [15:8], old_word [7:0] };
+                      2'b10: new_word = { old_word [31:24], hwdata   [23:16], old_word [15:8], old_word [7:0] };
+                      2'b11: new_word = { hwdata   [31:24], old_word [23:16], old_word [15:8], old_word [7:0] };
+                   endcase
+      AHBL_BITS16: case (addr_lsbs)
+                      2'b00: new_word = { old_word [31:16], hwdata   [15:0] };
+                      2'b10: new_word = { hwdata   [31:16], old_word [15:0] };
+                   endcase
+      AHBL_BITS32: case (addr_lsbs)
+                      2'b00: new_word = hwdata;
+                   endcase
+   endcase
+   return new_word;
+endfunction
 
 endpackage
