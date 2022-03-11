@@ -298,7 +298,7 @@ endmodule
 // with the appropriate bytes of HWDATA depending on the address LSBs and transfer size.
 // Also returns err=True for unsupported 'size' and misaligned addrs.
 
-function Bool fn_is_aligned (Bit #(2) addr_lsbs, AHBL_Size size);
+function Bool fn_ahbl_is_aligned (Bit #(2) addr_lsbs, AHBL_Size size);
    let is_aligned = True;
    case (size)
       AHBL_BITS8  : return (True);
@@ -315,10 +315,10 @@ function Bool fn_is_aligned (Bit #(2) addr_lsbs, AHBL_Size size);
    endcase
 endfunction
 
-function Bit #(32) fn_replace_bytes (  Bit #(2) addr_lsbs
-                                     , AHBL_Size  size
-                                     , Bit #(32)  old_word
-                                     , Bit #(32)  hwdata);
+function Bit #(32) fn_ahbl_update_wdata (  Bit #(2)  addr_lsbs
+                                         , AHBL_Size size
+                                         , Bit #(32) old_word
+                                         , Bit #(32) hwdata);
 
    let new_word = old_word;
    case (size)
