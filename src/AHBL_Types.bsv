@@ -214,11 +214,6 @@ instance Connectable #(AHBL_Master_IFC #(wd_data),
 	 slave.hwrite (master.hwrite);
       endrule
 
-      (* fire_when_enabled, no_implicit_conditions *)
-      rule rl_connect_hsel;
-	 slave.hsel (True);
-      endrule
-
       // ----------------------------------------------------------------
       // Slave to master signals
 
