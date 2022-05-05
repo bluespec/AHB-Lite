@@ -232,7 +232,7 @@ module mkTCM_AHBL_Adapter #(
       rg_hwrite <= write_request;
       rg_state  <= ADDR;
       if (verbosity > 0) begin
-         $display ("%0d: %m.rl_nseq_req: (addr 0x%08h) ", cur_cycle, req_addr
+         $display ("%06d:[D]:%m.rl_nseq_req: (addr 0x%08h) ", cur_cycle, req_addr
                  , "(read: ", fshow (read_request), ") "
                  , "(size: ", fshow (fv_size_code_to_AHBL_Size (req.size_code)));
       end
@@ -252,10 +252,10 @@ module mkTCM_AHBL_Adapter #(
          rg_hwdata <= hwdata;
       if (verbosity > 0) begin
          if (write_request)
-            $display ("%0d: %m.rl_complete_nseq_req: (addr 0x%08h) (wdata 0x%08h)"
+            $display ("%06d:[D]:%m.rl_complete_nseq_req: (addr 0x%08h) (wdata 0x%08h)"
                , cur_cycle, req_addr, hwdata );
          else
-            $display ("%0d: %m.rl_complete_nseq_req: (addr 0x%08h) ", cur_cycle, req_addr);
+            $display ("%06d:[D]:%m.rl_complete_nseq_req: (addr 0x%08h) ", cur_cycle, req_addr);
       end
    endrule
 
@@ -295,7 +295,7 @@ module mkTCM_AHBL_Adapter #(
       // Advance request queue
       f_single_reqs.deq;
       if (verbosity > 0) begin
-         $display ("%0d: %m.rl_read_response: ", cur_cycle, fshow (rsp));
+         $display ("%06d:[D]:%m.rl_read_response: ", cur_cycle, fshow (rsp));
       end
    endrule
 
@@ -309,7 +309,7 @@ module mkTCM_AHBL_Adapter #(
       f_single_reqs.deq;
       f_single_write_data.deq;
       if (verbosity > 0) begin
-         $display ("%0d: %m.rl_write_response", cur_cycle);
+         $display ("%06d:[D]:%m.rl_write_response", cur_cycle);
       end
    endrule
 
@@ -317,13 +317,15 @@ module mkTCM_AHBL_Adapter #(
    // ================================================================
    // INTERFACE
    method Action reset;
+`ifdef STANDALONE
       f_single_reqs.clear;
       f_single_write_data.clear;
       f_single_read_data.clear;
+`endif
       rg_htrans <= AHBL_IDLE;
       rg_state <= IDLE;
       if (verbosity > 1)
-         $display ("%0d: %m.reset", cur_cycle);
+         $display ("%06d:[D]:%m.reset", cur_cycle);
    endmethod
 
 
