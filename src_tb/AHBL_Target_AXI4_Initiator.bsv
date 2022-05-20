@@ -68,6 +68,7 @@ module mkAHBL_Target_AXI4_Initiator (AHBL_Target_AXI4_Initiator);
 
    // Inputs
    Wire #(Bool)        w_hsel      <- mkBypassWire;
+   Wire #(Bool)        w_hready_in <- mkBypassWire;
    Wire #(Bit #(32))   w_haddr     <- mkBypassWire;
    Wire #(AHBL_Burst)  w_hburst    <- mkBypassWire;
    Wire #(Bool)        w_hmastlock <- mkBypassWire;
@@ -105,7 +106,7 @@ module mkAHBL_Target_AXI4_Initiator (AHBL_Target_AXI4_Initiator);
    Reg #(Bit #(2)) rg_wr_rsps_pending <- mkReg (0);
    rule rl_ahbl_new_req (rg_state == RDY);
       let nstate = rg_state;
-      Bool sel = (w_hsel && (w_htrans != AHBL_IDLE));
+      Bool sel = (w_hsel && w_hready_in && (w_htrans != AHBL_IDLE));
       if (sel) begin
          AXI4_Size   fabric_size = fv_AHBL_Size_to_AXI4_Size (w_hsize);
          Fabric_Addr fabric_addr = pack (w_haddr);
@@ -245,6 +246,10 @@ module mkAHBL_Target_AXI4_Initiator (AHBL_Target_AXI4_Initiator);
       // Inputs
       method Action hsel (Bool sel);
          w_hsel <= sel;
+      endmethod
+
+      method Action hready (Bool hready_in);
+         w_hready_in <= hready_in;
       endmethod
 
       method Action haddr (Bit #(32) addr);
